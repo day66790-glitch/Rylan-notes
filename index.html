@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>同声传译 · 语音翻译 · 笔记 · Rylan's note</title>
+  <meta name="description" content="Rylan's note —— 单页应用：浏览器实时语音识别、接入大模型的语音翻译与对话翻译、笔记 AI 总结，以及可编辑的传媒术语库。" />
+
+  <!-- 首屏渲染前应用主题，避免暗黑 / 白天闪烁 -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('theme');
+        if (saved !== 'dark' && saved !== 'light') {
+          saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.classList.toggle('dark', saved === 'dark');
+        document.documentElement.style.colorScheme = saved;
+      } catch (error) { /* 本地存储不可用时保持默认暗色 */ }
+    })();
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', '"Segoe UI"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+  <!-- 笔记富文本：Markdown 解析（marked）+ 数学公式渲染（MathJax 3） -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+        ignoreHtmlClass: 'mathjax-ignore'
+      },
+      startup: {
+        typeset: false
+      }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <!-- 笔记导出 PDF：html2pdf.js（html2canvas + jsPDF 打包版） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="spa.css" />
+</head>
+<body data-page="app" class="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
+
+  <!-- 背景装饰 -->
+  <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+    <div class="absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-indigo-400/20 blur-3xl dark:bg-indigo-500/20"></div>
+    <div class="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-sky-400/10 blur-3xl dark:bg-sky-500/10"></div>
+  </div>
+
+  <!-- 顶部导航栏 -->
+  <header class="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl transition-colors dark:border-slate-800/70 dark:bg-slate-950/80">
+    <nav class="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6" aria-label="主导航">
+      <a href="#transcribe" data-route="transcribe" class="brand flex items-center gap-2.5 rounded-2xl border border-white/60 bg-white/50 px-2.5 py-1.5 shadow-sm shadow-slate-200/40 transition hover:bg-white/75 dark:border-white/10 dark:bg-white/5 dark:shadow-none dark:hover:bg-white/10" aria-label="Rylan's note 首页">
+        <span class="brand__logo relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-500 text-white shadow-lg shadow-sky-500/30 ring-1 ring-white/50">
+          <!-- 根目录没有 logo.png 时使用的内联 SVG：蓝色可爱风二次元小鲸鱼 -->
+          <svg class="h-7 w-7" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+            <path d="M17.5 11.4c0-2.7 1.5-4.7 4-5.8" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity=".85" />
+            <path d="M21.9 5.1c.6-1.4 1.9-2.3 3.4-2.5" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity=".6" />
+            <path d="M13.6 6.2c-1-.9-2.3-1.2-3.6-.8" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity=".5" />
+            <path d="M5.5 23.4c0-5.6 5.4-9.8 12.3-9.8 6.1 0 10.7 3.4 11.4 8 .2 1.1.1 2-.2 2.8 1.4 1.2 3.2 1.6 4.9 1.2-.8 2-2.6 3.2-4.8 3.3-1.5 2.8-4.6 4.7-8.5 4.7C13.3 33.6 5.5 29.8 5.5 23.4Z" fill="#ffffff" />
+            <path d="M28.1 28.8c-1.2.7-2.6 1.1-4.1 1.3" stroke="#bfdbfe" stroke-width="1.4" stroke-linecap="round" />
+            <circle cx="14" cy="21" r="2" fill="#1e3a8a" />
+            <circle cx="14.7" cy="20.3" r=".65" fill="#ffffff" />
+            <circle cx="8.8" cy="26.2" r="1.8" fill="#f9a8d4" opacity=".85" />
+            <path d="M17.4 26.6c.9.9 2 1.3 3.2 1.1" stroke="#1e3a8a" stroke-width="1.3" stroke-linecap="round" />
+            <path d="M11.6 29.9c2.2 1 4.7 1.3 7.2 1" stroke="#93c5fd" stroke-width="1.3" stroke-linecap="round" />
+          </svg>
+        </span>
+        <span class="leading-tight">
+          <span class="brand__name block bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-sm font-semibold tracking-wide text-transparent dark:from-sky-300 dark:to-indigo-300">Rylan's note</span>
+          <span class="block text-[10px] uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Speech · Notes</span>
+        </span>
+      </a>
+
+      <div class="flex items-center gap-2">
+        <ul class="hidden items-center gap-1 sm:flex">
+          <li><a href="#transcribe" data-route="transcribe" data-nav class="nav-link inline-flex items-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white">同声传译</a></li>
+          <li><a href="#translate" data-route="translate" data-nav class="nav-link inline-flex items-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white">语音翻译</a></li>
+          <li><a href="#notes" data-route="notes" data-nav class="nav-link inline-flex items-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white">笔记</a></li>
+          <li><a href="#profile" data-route="profile" data-nav class="nav-link inline-flex items-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white">个人设置</a></li>
+        </ul>
+
+        <!-- 用户头像：与设置页共用 user_avatar，点击进入个人设置 -->
+        <a href="#profile" data-route="profile" class="header-avatar" data-header-avatar aria-label="打开个人设置" title="个人设置">
+          <img data-avatar-img class="is-hidden" alt="" />
+          <span data-avatar-fallback>R</span>
+        </a>
+
+        <!-- iOS 风格主题开关：滑块内为当前主题图标，轨道两端为待切换主题图标 -->
+        <button id="themeToggle" type="button" role="switch" aria-checked="false"
+          class="theme-switch relative inline-flex h-9 w-16 shrink-0 items-center rounded-full border border-slate-200/80 bg-slate-200/80 px-1 shadow-inner transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 dark:border-white/10 dark:bg-slate-800/80"
+          aria-label="切换暗黑 / 白天模式" title="切换暗黑 / 白天模式">
+          <span class="theme-switch__icon theme-switch__icon--sun" aria-hidden="true">
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+            </svg>
+          </span>
+          <span class="theme-switch__icon theme-switch__icon--moon" aria-hidden="true">
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+            </svg>
+          </span>
+          <span class="theme-switch__thumb" aria-hidden="true">
+            <svg data-knob-icon="sun" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+            </svg>
+            <svg data-knob-icon="moon" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+            </svg>
+          </span>
+        </button>
+
+        <button id="mobileMenuBtn" type="button" class="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:hidden" aria-label="打开菜单" aria-expanded="false" aria-controls="mobileMenu">
+          <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+      </div>
+    </nav>
+
+    <div id="mobileMenu" class="hidden border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950 sm:hidden">
+      <ul class="flex flex-col gap-1">
+        <li><a href="#transcribe" data-route="transcribe" data-nav class="nav-link block rounded-xl px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">同声传译</a></li>
+        <li><a href="#translate" data-route="translate" data-nav class="nav-link block rounded-xl px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">语音翻译</a></li>
+        <li><a href="#notes" data-route="notes" data-nav class="nav-link block rounded-xl px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">笔记</a></li>
+        <li><a href="#profile" data-route="profile" data-nav class="nav-link block rounded-xl px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">个人设置</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- 主内容区：单页应用，四个视图由 Hash 路由切换 -->
+  <main class="mx-auto w-full max-w-3xl px-4 pb-12 pt-8 sm:px-6 sm:pt-12">
+
+    <!-- 视图 1：同声传译 -->
+    <section id="view-transcribe" data-view="transcribe" class="view is-active">
+
+    <!-- 页面标题 -->
+    <section class="animate-fade-up space-y-3">
+      <span class="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+        Web Speech API · 实时识别
+      </span>
+      <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">同声传译</h1>
+      <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+        点击麦克风开始说话，浏览器会实时把语音转成文字。默认识别语言为
+        <code class="rounded-md bg-slate-200/70 px-1.5 py-0.5 font-mono text-[12px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">en-MY</code>
+        （马来西亚英语），可在麦克风上方切换多语种 / 多口音，识别完成后可一键保存到笔记。
+      </p>
+    </section>
+
+    <!-- 麦克风卡片 -->
+    <section class="apple-card animate-fade-up delay-1 mt-6 rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-xl shadow-slate-200/50 backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none sm:p-8">
+      <div class="flex flex-col items-center gap-6 text-center">
+        <!-- 同传多语种 / 多口音选择（实时生效） -->
+        <div class="w-full max-w-sm">
+          <label for="languageSelect" class="mb-2 flex flex-wrap items-center justify-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <svg class="h-4 w-4 text-indigo-500 dark:text-indigo-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21C9.5 18.4 8.2 15.3 8.2 12S9.5 5.6 12 3Z" />
+            </svg>
+            识别语言 / 口音
+            <span id="langBadge" class="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-indigo-500 dark:bg-indigo-500/15 dark:text-indigo-300">en-MY</span>
+          </label>
+
+          <div class="relative">
+            <select id="languageSelect"
+              class="lang-select w-full appearance-none rounded-2xl border border-slate-200 bg-white/90 py-3 pl-4 pr-11 text-sm font-medium text-slate-700 shadow-sm outline-none transition hover:border-indigo-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:hover:border-indigo-500/60 dark:focus:border-indigo-500 dark:focus:ring-indigo-500/20">
+              <optgroup label="英语与口音">
+                <option value="en-MY" selected>en-MY · 马来西亚英语</option>
+                <option value="en-IN">en-IN · 印度英语</option>
+                <option value="en-US">en-US · 美式英语</option>
+                <option value="en-GB">en-GB · 英式英语</option>
+                <option value="en-AU">en-AU · 澳洲英语</option>
+              </optgroup>
+              <optgroup label="亚洲语言">
+                <option value="zh-CN">zh-CN · 简体中文</option>
+                <option value="zh-TW">zh-TW · 繁体中文</option>
+                <option value="ja-JP">ja-JP · 日语</option>
+                <option value="ko-KR">ko-KR · 韩语</option>
+                <option value="ms-MY">ms-MY · 马来语</option>
+                <option value="id-ID">id-ID · 印尼语</option>
+                <option value="th-TH">th-TH · 泰语</option>
+                <option value="vi-VN">vi-VN · 越南语</option>
+              </optgroup>
+              <optgroup label="欧洲及其他">
+                <option value="fr-FR">fr-FR · 法语</option>
+                <option value="de-DE">de-DE · 德语</option>
+                <option value="es-ES">es-ES · 西班牙语</option>
+                <option value="ru-RU">ru-RU · 俄语</option>
+                <option value="pt-BR">pt-BR · 葡萄牙语</option>
+                <option value="it-IT">it-IT · 意大利语</option>
+                <option value="ar-SA">ar-SA · 阿拉伯语</option>
+              </optgroup>
+            </select>
+            <span class="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-slate-400 dark:text-slate-500" aria-hidden="true">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </div>
+
+          <p class="mt-2 text-center text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
+            切换后立即生效，正在进行的识别会自动用新语言重新开始。
+          </p>
+        </div>
+
+        <!-- 音频来源：麦克风 / 系统音频内录 -->
+        <div class="w-full max-w-md">
+          <p class="mb-2 flex flex-wrap items-center justify-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <svg class="h-4 w-4 text-indigo-500 dark:text-indigo-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+              <path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" />
+            </svg>
+            音频来源
+            <span id="audioSourceBadge" class="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-indigo-500 dark:bg-indigo-500/15 dark:text-indigo-300">麦克风</span>
+          </p>
+
+          <div class="segmented segmented--ios mx-auto w-full max-w-xs" role="tablist" aria-label="音频来源">
+            <button id="sourceMicBtn" type="button" role="tab" aria-selected="true" class="segmented__btn is-active">麦克风</button>
+            <button id="sourceSystemBtn" type="button" role="tab" aria-selected="false" class="segmented__btn">系统音频</button>
+          </div>
+
+          <p id="sourceHint" class="mt-2 text-center text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
+            麦克风：说一句识别一句，边录边译会实时给出译文。系统音频：捕获标签页 / 窗口的声音，需要 OpenAI Whisper。
+          </p>
+
+          <label for="autoTranslateToggle" class="mt-3 flex cursor-pointer items-center justify-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <input id="autoTranslateToggle" type="checkbox" checked
+              class="h-4 w-4 rounded border-slate-300 accent-indigo-500 focus:ring-indigo-400 dark:border-slate-600 dark:bg-slate-800" />
+            边录边译（每识别出一句自动翻译）
+          </label>
+        </div>
+
+        <div id="micWrap" class="relative flex h-40 w-40 items-center justify-center">
+          <span class="mic-ring" aria-hidden="true"></span>
+          <span class="mic-ring" aria-hidden="true"></span>
+          <span class="mic-ring" aria-hidden="true"></span>
+
+          <button id="micBtn" type="button" aria-pressed="false" class="mic-button relative z-10 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-xl shadow-indigo-500/30 transition duration-300 hover:scale-105 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">
+            <svg class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+              <path d="M5 11a7 7 0 0 0 14 0" />
+              <path d="M12 18v3" />
+            </svg>
+            <span class="sr-only">开始或停止录音</span>
+          </button>
+        </div>
+
+        <div>
+          <p class="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+            <span id="statusDot" class="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500"></span>
+            <span id="micStatus">准备就绪，点击开始录音</span>
+          </p>
+          <p id="micHint" class="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
+            请靠近麦克风说话，并保持环境安静。首次使用需要授权麦克风（仅支持 HTTPS 或 localhost，推荐 Chrome / Edge）。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 识别结果 -->
+    <section class="apple-card animate-fade-up delay-2 mt-6 rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-xl shadow-slate-200/50 backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none sm:p-8">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="flex flex-wrap items-center gap-2 text-sm font-semibold">
+          识别结果
+          <span id="transcriptLang" class="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">en-MY</span>
+          <span id="asrEngineBadge" class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300">浏览器识别</span>
+        </h2>
+        <div class="flex items-center gap-2">
+          <span id="charCount" class="text-xs text-slate-400 dark:text-slate-500">0 字符</span>
+          <button id="copyTranscriptBtn" type="button" class="copy-chip" disabled title="复制识别结果">
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2.5" />
+              <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+            </svg>
+            一键复制
+          </button>
+        </div>
+      </div>
+
+      <div id="transcript" class="hidden min-h-[0] whitespace-pre-wrap break-words rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-[15px] leading-relaxed text-slate-700 dark:border-slate-700/70 dark:bg-slate-950/40 dark:text-slate-200" aria-hidden="true">
+        <span id="transcriptPlaceholder" class="text-slate-400 dark:text-slate-500"></span><span id="transcriptText"></span><span id="transcriptInterim" class="text-slate-400 dark:text-slate-500"></span>
+      </div>
+
+      <!-- 字幕流：时间戳 + 原文 + 译文（边录边译） -->
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 class="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          字幕流 · 边录边译
+          <span id="subtitleCount" class="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-medium normal-case tracking-normal text-slate-500 dark:bg-slate-800 dark:text-slate-400">0 条</span>
+        </h3>
+        <label for="autoScrollToggle" class="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+          <input id="autoScrollToggle" type="checkbox" checked
+            class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-500 dark:border-slate-600 dark:bg-slate-800" />
+          自动滚动
+        </label>
+      </div>
+
+      <div id="subtitleStream" role="log" aria-live="polite"
+        class="max-h-[440px] space-y-2.5 overflow-y-auto rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-left dark:border-slate-700/70 dark:bg-slate-950/40">
+        <p id="subtitleEmpty" class="px-1 py-8 text-center text-sm leading-relaxed text-slate-400 dark:text-slate-500">
+          点击麦克风开始说话，识别出的每一句都会带时间戳显示在这里，并自动翻译成目标语言。
+        </p>
+      </div>
+
+      <p id="subtitleInterim" class="mt-2 hidden min-h-[1.25rem] px-1 text-sm italic text-slate-400 dark:text-slate-500" aria-live="polite"></p>
+
+      <template id="subtitleLineTemplate">
+        <div class="subtitle-line group flex items-start gap-3 rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-indigo-500/50">
+          <span class="mt-0.5 shrink-0 rounded-lg bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-slate-500 dark:bg-slate-800 dark:text-slate-400" data-line-time>00:00:00</span>
+          <div class="min-w-0 flex-1">
+            <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-500 dark:text-slate-400" dir="auto" data-line-original></p>
+            <p class="mt-1 hidden whitespace-pre-wrap break-words text-[15px] font-medium leading-relaxed text-slate-800 dark:text-slate-100" dir="auto" data-line-translated></p>
+            <p class="mt-1 hidden text-[11px] leading-relaxed text-indigo-500 dark:text-indigo-300" data-line-status></p>
+          </div>
+          <button type="button" class="note-action shrink-0" data-line-save aria-label="保存这句为笔记" title="保存为笔记">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      </template>
+
+      <div class="mt-5 flex flex-wrap items-center gap-2.5">
+        <button id="saveNoteBtn" type="button" disabled class="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-500 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          <span id="saveNoteLabel">保存到笔记</span>
+        </button>
+
+        <button id="translateBtn" type="button" disabled class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-300">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
+          </svg>
+          <span id="translateLabel">AI 翻译 · 术语润色</span>
+        </button>
+
+        <button id="clearBtn" type="button" disabled class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-slate-300/50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200">
+          清空
+        </button>
+        <span class="mx-1 hidden h-5 w-px bg-slate-200 dark:bg-slate-700 sm:inline-block" aria-hidden="true"></span>
+
+        <label for="transcribeTargetSelect" class="text-xs font-medium text-slate-400 dark:text-slate-500">翻译为</label>
+        <div class="relative">
+          <select id="transcribeTargetSelect" aria-label="翻译目标语言"
+            class="lang-select appearance-none rounded-full border border-slate-200 bg-white py-2 pl-3 pr-8 text-xs font-medium text-slate-600 outline-none transition hover:border-indigo-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/60">
+            <option value="zh-CN" data-name="简体中文" selected>简体中文</option>
+            <option value="zh-TW" data-name="繁體中文">繁體中文</option>
+            <option value="en-US" data-name="English">English</option>
+            <option value="ms-MY" data-name="Bahasa Melayu">Bahasa Melayu</option>
+            <option value="ja-JP" data-name="日本語">日本語</option>
+            <option value="ko-KR" data-name="한국어">한국어</option>
+            <option value="fr-FR" data-name="Français">Français</option>
+            <option value="de-DE" data-name="Deutsch">Deutsch</option>
+            <option value="es-ES" data-name="Español">Español</option>
+            <option value="ar-SA" data-name="العربية">العربية</option>
+          </select>
+          <span class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-slate-400 dark:text-slate-500" aria-hidden="true">
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <!-- 大模型响应面板 -->
+      <div id="aiPanel" class="mt-5 hidden rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M17.7 6.3l-2.8 2.8M9.1 14.9l-2.8 2.8" />
+            </svg>
+            <span id="aiPanelTitle">AI 翻译结果（含术语润色）</span>
+          </div>
+          <button id="copyTranslationBtn" type="button" class="copy-chip">一键复制</button>
+        </div>
+        <p id="aiContent" class="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200"></p>
+      </div>
+    </section>
+
+    <p class="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
+      语音识别由浏览器提供，内容与 API Key 都只保存在本机浏览器中。
+    </p>
+    </section><!-- /view-transcribe -->
+
+    <!-- 视图 2：语音翻译（普通模式 + 对话模式） -->
+    <section id="view-translate" data-view="translate" class="view">
+      <!-- 标题 -->
+      <section class="animate-fade-up space-y-3">
+        <span class="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-600 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+          语音识别 + 大模型 · 实时翻译
+        </span>
+        <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">语音翻译</h1>
+        <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+          说一句话，自动识别并调用大模型翻译，输出会遵守「传媒术语表」的专业译法。
+        </p>
+      </section>
+
+      <!-- 模式切换 -->
+      <div class="segmented animate-fade-up delay-1 mt-6" role="tablist" aria-label="翻译模式">
+        <button type="button" role="tab" aria-selected="true" data-translate-mode="normal" class="segmented__btn is-active">普通模式</button>
+        <button type="button" role="tab" aria-selected="false" data-translate-mode="dialog" class="segmented__btn">对话模式</button>
+      </div>
+
+      <!-- 普通模式 -->
+      <div id="translateNormalPanel" class="translate-mode-panel">
+        <section class="apple-card animate-fade-up delay-1 mt-4 rounded-3xl border border-slate-200 bg-white/80 p-5 shadow-xl shadow-slate-200/50 backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none sm:p-6">
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="block">
+              <span class="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">我说（识别语言）</span>
+              <div class="relative">
+                <select id="translateLangSelect" class="lang-select w-full appearance-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-3 pr-9 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100">
+                  <option value="en-MY" data-name="马来西亚英语" selected>en-MY · 马来西亚英语</option>
+                  <option value="en-US" data-name="美式英语">en-US · 美式英语</option>
+                  <option value="en-GB" data-name="英式英语">en-GB · 英式英语</option>
+                  <option value="zh-CN" data-name="简体中文">zh-CN · 简体中文</option>
+                  <option value="zh-TW" data-name="繁体中文">zh-TW · 繁体中文</option>
+                  <option value="ms-MY" data-name="马来语">ms-MY · 马来语</option>
+                  <option value="ja-JP" data-name="日语">ja-JP · 日语</option>
+                  <option value="ko-KR" data-name="韩语">ko-KR · 韩语</option>
+                  <option value="id-ID" data-name="印尼语">id-ID · 印尼语</option>
+                  <option value="th-TH" data-name="泰语">th-TH · 泰语</option>
+                  <option value="vi-VN" data-name="越南语">vi-VN · 越南语</option>
+                  <option value="fr-FR" data-name="法语">fr-FR · 法语</option>
+                  <option value="de-DE" data-name="德语">de-DE · 德语</option>
+                  <option value="es-ES" data-name="西班牙语">es-ES · 西班牙语</option>
+                  <option value="ar-SA" data-name="阿拉伯语">ar-SA · 阿拉伯语</option>
+                </select>
+                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400" aria-hidden="true">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              </div>
+            </label>
+
+            <label class="block">
+              <span class="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">翻译为</span>
+              <div class="relative">
+                <select id="translateTargetSelect" class="lang-select w-full appearance-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-3 pr-9 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100">
+                  <option value="zh-CN" data-name="简体中文" selected>简体中文</option>
+                  <option value="zh-TW" data-name="繁體中文">繁體中文</option>
+                  <option value="en-US" data-name="English">English</option>
+                  <option value="ms-MY" data-name="Bahasa Melayu">Bahasa Melayu</option>
+                  <option value="ja-JP" data-name="日本語">日本語</option>
+                  <option value="ko-KR" data-name="한국어">한국어</option>
+                  <option value="fr-FR" data-name="Français">Français</option>
+                  <option value="de-DE" data-name="Deutsch">Deutsch</option>
+                  <option value="es-ES" data-name="Español">Español</option>
+                  <option value="ar-SA" data-name="العربية">العربية</option>
+                </select>
+                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400" aria-hidden="true">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              </div>
+            </label>
+          </div>
+
+          <div class="mt-6 flex flex-col items-center gap-4">
+            <div id="translateMicWrap" class="relative flex h-28 w-28 items-center justify-center">
+              <span class="mic-ring" aria-hidden="true"></span>
+              <span class="mic-ring" aria-hidden="true"></span>
+              <button id="translateMicBtn" type="button" aria-pressed="false"
+                class="mic-button relative z-10 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow-xl shadow-sky-500/30 transition duration-300 hover:scale-105 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-400/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">
+                <svg class="h-9 w-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                  <path d="M5 11a7 7 0 0 0 14 0" />
+                  <path d="M12 18v3" />
+                </svg>
+                <span class="sr-only">开始或停止录音并翻译</span>
+              </button>
+            </div>
+            <p class="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+              <span id="translateStatusDot" class="h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500"></span>
+              <span id="translateStatus">准备就绪，点击麦克风开始</span>
+            </p>
+          </div>
+
+
+          <div class="mt-6 grid gap-4">
+            <div>
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h2 class="text-sm font-semibold">识别原文</h2>
+                <button id="translateCopySourceBtn" type="button" class="copy-chip" disabled>一键复制</button>
+              </div>
+              <div class="min-h-[96px] whitespace-pre-wrap break-words rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-[15px] leading-relaxed text-slate-700 dark:border-slate-700/70 dark:bg-slate-950/40 dark:text-slate-200">
+                <span id="translateSourcePlaceholder" class="text-slate-400 dark:text-slate-500">识别到的原文会显示在这里…</span><span id="translateSourceText"></span><span id="translateSourceInterim" class="text-slate-400 dark:text-slate-500"></span>
+              </div>
+            </div>
+
+            <div>
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h2 class="flex items-center gap-2 text-sm font-semibold">
+                  译文
+                  <span id="translateTargetBadge" class="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-600 dark:bg-sky-500/15 dark:text-sky-300">简体中文</span>
+                </h2>
+                <button id="translateCopyResultBtn" type="button" class="copy-chip" disabled>一键复制</button>
+              </div>
+              <div id="translateResultBox" class="min-h-[96px] whitespace-pre-wrap break-words rounded-2xl border border-sky-200/70 bg-sky-50/60 p-4 text-[15px] leading-relaxed text-slate-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-slate-200">
+                <span id="translateResultPlaceholder" class="text-slate-400 dark:text-slate-500">点击「AI 翻译」后，这里会显示经过术语润色的译文…</span><span id="translateResultText"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5 flex flex-wrap items-center gap-2.5">
+            <button id="translateActionBtn" type="button" disabled
+              class="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-500 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
+              <span id="translateActionLabel">AI 翻译</span>
+            </button>
+            <button id="translateSaveBtn" type="button" disabled
+              class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-300">
+              保存为笔记
+            </button>
+            <button id="translateClearBtn" type="button"
+              class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200">
+              清空
+            </button>
+          </div>
+
+        </section>
+      </div>
+
+      <!-- 对话模式：上下分屏 -->
+      <div id="translateDialogPanel" class="translate-mode-panel hidden">
+        <section class="apple-card animate-fade-up mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white/80 shadow-xl shadow-slate-200/50 backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none">
+          <!-- 对方（上方） -->
+          <div class="dialog-pane dialog-pane--partner">
+            <header class="dialog-pane__head">
+              <div class="min-w-0">
+                <p class="dialog-pane__role"><span class="dialog-dot dialog-dot--partner" aria-hidden="true"></span>对方</p>
+                <p class="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">选择对方语言，译文会显示在你的语言里</p>
+              </div>
+              <div class="relative shrink-0">
+                <select id="dialogPartnerLang" aria-label="对方语言"
+                  class="lang-select appearance-none rounded-full border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-slate-600 outline-none transition focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300">
+                  <option value="en-MY" data-name="马来西亚英语" selected>en-MY</option>
+                  <option value="en-US" data-name="美式英语">en-US</option>
+                  <option value="zh-CN" data-name="简体中文">zh-CN</option>
+                  <option value="ms-MY" data-name="马来语">ms-MY</option>
+                  <option value="ja-JP" data-name="日语">ja-JP</option>
+                  <option value="ko-KR" data-name="韩语">ko-KR</option>
+                  <option value="id-ID" data-name="印尼语">id-ID</option>
+                  <option value="th-TH" data-name="泰语">th-TH</option>
+                  <option value="fr-FR" data-name="法语">fr-FR</option>
+                  <option value="de-DE" data-name="德语">de-DE</option>
+                  <option value="es-ES" data-name="西班牙语">es-ES</option>
+                </select>
+                <span class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-slate-400" aria-hidden="true">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              </div>
+            </header>
+
+            <div id="dialogPartnerBubbles" class="chat-thread" aria-live="polite">
+              <p class="chat-empty" id="dialogPartnerEmpty">点击麦克风，对方说的话会自动识别并翻译成你的语言</p>
+            </div>
+
+            <div class="dialog-pane__foot">
+              <button id="dialogPartnerMicBtn" type="button" aria-pressed="false"
+                class="mic-button flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/30 transition hover:scale-105 focus:outline-none focus-visible:ring-4 focus-visible:ring-violet-400/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                </svg>
+                <span class="sr-only">对方开始说话</span>
+              </button>
+              <span id="dialogPartnerStatus" class="text-xs font-medium text-slate-500 dark:text-slate-400">等待对方说话</span>
+            </div>
+          </div>
+
+          <div class="dialog-divider" aria-hidden="true">
+            <span>自动翻译</span>
+          </div>
+
+          <!-- 我（下方） -->
+          <div class="dialog-pane dialog-pane--mine">
+            <header class="dialog-pane__head">
+              <div class="min-w-0">
+                <p class="dialog-pane__role"><span class="dialog-dot dialog-dot--me" aria-hidden="true"></span>我</p>
+                <p class="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">选择我的语言，译文会显示在对方的语言里</p>
+              </div>
+              <div class="relative shrink-0">
+                <select id="dialogMyLang" aria-label="我的语言"
+                  class="lang-select appearance-none rounded-full border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-slate-600 outline-none transition focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300">
+                  <option value="zh-CN" data-name="简体中文" selected>zh-CN</option>
+                  <option value="zh-TW" data-name="繁体中文">zh-TW</option>
+                  <option value="en-MY" data-name="马来西亚英语">en-MY</option>
+                  <option value="en-US" data-name="美式英语">en-US</option>
+                  <option value="ms-MY" data-name="马来语">ms-MY</option>
+                  <option value="ja-JP" data-name="日语">ja-JP</option>
+                  <option value="ko-KR" data-name="韩语">ko-KR</option>
+                  <option value="id-ID" data-name="印尼语">id-ID</option>
+                  <option value="th-TH" data-name="泰语">th-TH</option>
+                  <option value="fr-FR" data-name="法语">fr-FR</option>
+                  <option value="de-DE" data-name="德语">de-DE</option>
+                  <option value="es-ES" data-name="西班牙语">es-ES</option>
+                </select>
+                <span class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-slate-400" aria-hidden="true">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              </div>
+            </header>
+
+            <div id="dialogMyBubbles" class="chat-thread" aria-live="polite">
+              <p class="chat-empty" id="dialogMyEmpty">点击麦克风，你说的话会自动识别并翻译给对方</p>
+            </div>
+
+            <div class="dialog-pane__foot">
+              <button id="dialogMyMicBtn" type="button" aria-pressed="false"
+                class="mic-button flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow-lg shadow-sky-500/30 transition hover:scale-105 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-400/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                </svg>
+                <span class="sr-only">我开始说话</span>
+              </button>
+              <span id="dialogMyStatus" class="text-xs font-medium text-slate-500 dark:text-slate-400">等待我说话</span>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+            <p class="text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">交替点击麦克风，识别完成后会自动翻译并以气泡呈现。</p>
+            <button id="dialogClearBtn" type="button" class="apple-chip apple-chip--danger shrink-0">清空对话</button>
+          </div>
+
+        </section>
+      </div>
+
+    </section><!-- /view-translate -->
+
+
+    <!-- 视图 3：笔记 + AI 工具箱 -->
+    <section id="view-notes" data-view="notes" class="view">
+      <!-- 标题 -->
+      <section class="animate-fade-up flex flex-wrap items-end justify-between gap-4">
+        <div class="space-y-2">
+          <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+            localStorage · notes
+          </span>
+          <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">我的笔记</h1>
+          <p class="max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+            同声传译、语音翻译保存的内容与手动输入的内容都会出现在这里；AI 工具箱可以把所有笔记打包交给大模型总结或排版。
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span id="noteCount" class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">0 条笔记</span>
+          <button id="shareNotesBtn" type="button" class="note-tool" title="把全部笔记拼成文本，调起系统分享面板" disabled>
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="18" cy="5" r="2.6" />
+              <circle cx="6" cy="12" r="2.6" />
+              <circle cx="18" cy="19" r="2.6" />
+              <path d="m8.3 10.8 7.4-4.3M8.3 13.2l7.4 4.3" />
+            </svg>
+            分享笔记
+          </button>
+          <button id="exportPdfBtn" type="button" class="note-tool" title="把全部笔记导出为 PDF 文件" disabled>
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M5 21h14" />
+            </svg>
+            导出 PDF
+          </button>
+          <button id="clearAllBtn" type="button" class="hidden items-center gap-1.5 rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-500 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-400 dark:hover:bg-rose-500/10">
+            清空全部
+          </button>
+        </div>
+      </section>
+
+      <!-- AI 工具箱 -->
+      <section class="apple-card animate-fade-up delay-1 mt-6 rounded-3xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/80 via-white/80 to-sky-50/70 p-5 shadow-xl shadow-indigo-200/40 backdrop-blur transition-colors dark:border-indigo-500/30 dark:from-indigo-500/10 dark:via-slate-900/70 dark:to-sky-500/10 dark:shadow-none sm:p-6">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="flex items-center gap-2 text-sm font-semibold">
+              <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-500 dark:text-indigo-300" aria-hidden="true">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M17.7 6.3l-2.8 2.8M9.1 14.9l-2.8 2.8" />
+                </svg>
+              </span>
+              AI 工具箱
+            </h2>
+            <p class="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">把当前全部笔记打包发给大模型，结果会自动生成一条新笔记。</p>
+          </div>
+          <span class="rounded-full border border-indigo-200 bg-white/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-indigo-500 dark:border-indigo-500/30 dark:bg-slate-900/60 dark:text-indigo-300">术语表已注入</span>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button id="aiSummaryBtn" type="button" class="ai-tool-btn">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6h16M4 12h10M4 18h7" />
+            </svg>
+            一键总结
+          </button>
+          <button id="aiFormatBtn" type="button" class="ai-tool-btn">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+            </svg>
+            分段排版
+          </button>
+          <button id="aiClearResultBtn" type="button" class="hidden rounded-full px-3 py-2 text-xs font-medium text-slate-500 transition hover:bg-white/70 dark:text-slate-400 dark:hover:bg-slate-800/70">清除结果</button>
+        </div>
+
+        <div id="aiToolStatus" class="mt-3 hidden rounded-xl border border-indigo-200 bg-white/70 px-3 py-2 text-xs text-indigo-600 dark:border-indigo-500/30 dark:bg-slate-900/60 dark:text-indigo-300" role="status" aria-live="polite"></div>
+        <div id="aiToolResult" class="mt-3 hidden rounded-2xl border border-indigo-200 bg-white/80 p-4 dark:border-indigo-500/30 dark:bg-slate-950/50">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <span id="aiToolResultTitle" class="text-xs font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-300">AI 结果</span>
+            <button id="aiToolCopyBtn" type="button" class="copy-chip">一键复制</button>
+          </div>
+          <p id="aiToolResultText" class="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200"></p>
+          <p class="mt-2 text-[11px] text-slate-400 dark:text-slate-500">以上内容已自动生成一条新笔记。</p>
+        </div>
+      </section>
+
+      <!-- 添加笔记 -->
+      <section class="apple-card animate-fade-up delay-1 mt-6 rounded-3xl border border-slate-200 bg-white/80 p-5 shadow-xl shadow-slate-200/50 backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none sm:p-6">
+        <form id="noteForm" class="space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label for="noteInput" class="block text-sm font-semibold">添加笔记</label>
+            <span class="text-[11px] text-slate-400 dark:text-slate-500">支持 Markdown · 表格 · $公式$</span>
+          </div>
+          <textarea id="noteInput" rows="3" placeholder="记录课堂笔记…支持 Markdown、表格与 LaTeX 公式（Ctrl / ⌘ + Enter 快速保存）"
+            class="w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500 dark:focus:ring-indigo-500/20"></textarea>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="noteImageBtn" type="button" class="note-tool" aria-label="上传图片并插入到笔记">
+              <span aria-hidden="true">📷</span>
+              上传图片
+            </button>
+            <input id="noteImageInput" type="file" accept="image/*" class="hidden" tabindex="-1" aria-hidden="true" />
+            <span class="text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">大图会自动压缩，图片只保存在本机浏览器</span>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-xs text-slate-400 dark:text-slate-500">保存时会自动记录当前的日期与时间</p>
+            <button id="addNoteBtn" type="submit" class="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-500 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/40 active:scale-[0.98]">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              添加笔记
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 笔记列表 -->
+      <section class="mt-8">
+        <h2 class="sr-only">笔记列表</h2>
+        <ul id="noteList" class="relative space-y-3 border-l border-slate-200 pl-3 dark:border-slate-800 sm:pl-4"></ul>
+
+        <div id="emptyState" class="hidden rounded-3xl border border-dashed border-slate-300 bg-white/60 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900/40">
+          <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+            <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+              <rect x="9" y="3" width="6" height="4" rx="1.5" />
+              <path d="M9 12h6M9 16h4" />
+            </svg>
+          </span>
+          <p class="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">还没有笔记</p>
+          <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">在上方输入内容，或前往「同声传译」录制语音。</p>
+          <a href="#transcribe" data-route="transcribe" class="mt-4 inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20">
+            去录音
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </a>
+        </div>
+      </section>
+
+      <template id="noteItemTemplate">
+        <li class="note-item group flex items-start gap-3 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-indigo-500/50">
+          <div class="mt-0.5 w-12 shrink-0 text-right sm:w-14">
+            <p class="font-mono text-[11px] font-semibold leading-tight tabular-nums text-indigo-500 dark:text-indigo-300" data-note-clock></p>
+            <p class="mt-0.5 text-[10px] leading-tight text-slate-400 dark:text-slate-500" data-note-date></p>
+            <span class="mt-1.5 inline-flex h-5 w-5 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/15 dark:text-indigo-300" data-note-icon></span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="hidden whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-500 dark:text-slate-400" dir="auto" data-note-original></p>
+            <div class="note-markdown break-words text-[15px] leading-relaxed text-slate-700 dark:text-slate-200" dir="auto" data-note-text></div>
+            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+              <span class="font-mono tabular-nums" data-note-time></span>
+              <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400" data-note-source></span>
+            </div>
+          </div>
+          <div class="flex shrink-0 flex-col gap-1">
+            <button type="button" data-copy-id="" class="note-action" aria-label="复制这条笔记" title="复制">
+              <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2.5" />
+                <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+              </svg>
+            </button>
+            <button type="button" data-delete-id="" class="note-action note-action--danger" aria-label="删除这条笔记" title="删除">
+              <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h16M10 11v6M14 11v6" />
+                <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+                <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </button>
+          </div>
+        </li>
+      </template>
+
+    </section><!-- /view-notes -->
+
+
+
+    <!-- 视图 4：个人设置 + 传媒术语库 -->
+    <section id="view-profile" data-view="profile" class="view">
+      <!-- 标题 -->
+      <section class="animate-fade-up space-y-2">
+        <span class="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-600 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
+          <span class="h-1.5 w-1.5 rounded-full bg-violet-500"></span>
+          个人设置 · 全部保存在本机
+        </span>
+        <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">账户与 API Key</h1>
+        <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+          API Key 与术语表只保存在这台设备的浏览器中（localStorage 的
+          <code class="rounded-md bg-slate-200/70 px-1.5 py-0.5 font-mono text-[12px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">api_key</code>
+          字段），不会上传到任何服务器。
+        </p>
+      </section>
+
+      <!-- 个人资料：头像 + 昵称 -->
+      <section class="apple-card animate-fade-up delay-1 mt-6 overflow-hidden">
+        <div class="profile-hero">
+          <button id="avatarPickerBtn" type="button" class="avatar-picker avatar-picker--lg" aria-label="点击上传本地头像" title="点击上传本地头像">
+            <img data-avatar-img class="avatar-picker__img is-hidden" alt="当前头像" />
+            <span data-avatar-fallback class="avatar-picker__fallback">R</span>
+            <span class="avatar-picker__badge" aria-hidden="true">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 8h3l1.6-2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" />
+                <circle cx="12" cy="13" r="3.2" />
+              </svg>
+            </span>
+          </button>
+
+          <div class="min-w-0 flex-1 text-center sm:text-left">
+            <div class="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <h2 id="profileDisplayName" class="profile-hero__name">Rylan</h2>
+              <span class="profile-badge">本地账户</span>
+            </div>
+            <p class="profile-hero__meta">头像与昵称只保存在 <code>user_avatar</code> / <code>user_name</code></p>
+            <p id="profileSaveHint" class="profile-hero__hint">点击头像即可从本地选择图片，自动压缩后保存。</p>
+          </div>
+
+          <a href="#notes" data-route="notes" class="apple-btn apple-btn--ghost self-center">
+            查看我的笔记
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </a>
+        </div>
+        <input id="avatarInput" type="file" accept="image/*" class="sr-only" />
+      </section>
+
+      <!-- 个人资料设置列表 -->
+      <section class="apple-card settings-card animate-fade-up delay-1 mt-4">
+        <div class="settings-card__head">
+          <h2 class="settings-card__title">
+            <span class="settings-icon settings-icon--indigo" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M5 20a7 7 0 0 1 14 0" />
+              </svg>
+            </span>
+            个人资料
+          </h2>
+          <p class="settings-card__subtitle">修改后立即写入本机浏览器，不需要额外的保存按钮。</p>
+        </div>
+
+        <div class="settings-list">
+          <div class="settings-row">
+            <span class="settings-icon settings-icon--blue" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <circle cx="9" cy="10" r="1.6" />
+                <path d="m4 18 5-5 4 4 3-2 4 4" />
+              </svg>
+            </span>
+            <span class="settings-row__text">
+              <span class="settings-row__label">头像</span>
+              <span class="settings-row__desc">JPG / PNG / WebP，自动压缩</span>
+            </span>
+            <div class="settings-value">
+              <button id="avatarChooseBtn" type="button" class="apple-chip">更换</button>
+              <button id="removeAvatarBtn" type="button" class="apple-chip apple-chip--danger" disabled>移除</button>
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <span class="settings-icon settings-icon--mint" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 6h16M4 12h10M4 18h7" />
+                <path d="M17 15.5 18.5 17 21 14.5" />
+              </svg>
+            </span>
+            <span class="settings-row__text">
+              <span class="settings-row__label">昵称</span>
+              <span class="settings-row__desc">用于设置页与头像首字母</span>
+            </span>
+            <div class="settings-value">
+              <input id="profileNameInput" type="text" maxlength="24" autocomplete="nickname" placeholder="例如 Rylan" class="settings-input" aria-label="昵称" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 语音识别引擎 -->
+      <section class="apple-card settings-card animate-fade-up delay-2 mt-4">
+        <div class="settings-card__head">
+          <h2 class="settings-card__title">
+            <span class="settings-icon settings-icon--mint" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                <path d="M5 11a7 7 0 0 0 14 0" />
+                <path d="M12 18v3" />
+              </svg>
+            </span>
+            语音识别引擎
+          </h2>
+          <p class="settings-card__subtitle">决定「同声传译 / 语音翻译」如何把声音转成文字。选择后立即生效，偏好保存在本机 localStorage 的 asr_engine。</p>
+          <p id="asrEngineHint" class="settings-card__subtitle"></p>
+        </div>
+
+        <div class="settings-list">
+          <div class="settings-row">
+            <span class="settings-icon settings-icon--purple" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M17.7 6.3l-2.8 2.8M9.1 14.9l-2.8 2.8" />
+              </svg>
+            </span>
+            <span class="settings-row__text">
+              <span class="settings-row__label">识别引擎</span>
+              <span class="settings-row__desc">Whisper 对口音（含马来西亚英语）更准确</span>
+            </span>
+            <div class="settings-value">
+              <div class="settings-select-wrap">
+                <select id="asrEngineSelect" class="lang-select settings-select" style="width:min(18rem, 62vw)" aria-label="语音识别引擎">
+                  <option value="browser" selected>浏览器内置引擎（Web Speech API）</option>
+                  <option value="whisper">OpenAI Whisper API（高准确率）</option>
+                </select>
+                <span class="settings-select__chevron" aria-hidden="true">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 大模型 API 配置（提供商 + API Key） -->
+      <section class="apple-card settings-card animate-fade-up delay-2 mt-4">
+        <div class="settings-card__head">
+          <h2 class="settings-card__title">
+            <span class="settings-icon settings-icon--purple" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="15" r="4" />
+                <path d="M10.85 12.15 19 4M18 5l2 2M15 8l2 2" />
+              </svg>
+            </span>
+            模型与 API Key
+          </h2>
+          <p class="settings-card__subtitle">选择模型提供商并保存 Key，用于「AI 翻译 / 术语润色 / 笔记总结」。数据仅写入本机 localStorage 的 api_provider / api_key。</p>
+        </div>
+
+        <form id="keyForm" class="settings-list">
+          <div class="settings-row">
+            <span class="settings-icon settings-icon--orange" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M17.7 6.3l-2.8 2.8M9.1 14.9l-2.8 2.8" />
+              </svg>
+            </span>
+            <span class="settings-row__text">
+              <span class="settings-row__label">模型提供商</span>
+              <span class="settings-row__desc">决定后续调用的接口</span>
+            </span>
+            <div class="settings-value">
+              <div class="settings-select-wrap">
+                <select id="apiProviderSelect" class="lang-select settings-select" aria-label="模型提供商">
+                  <option value="deepseek" selected>DeepSeek</option>
+                  <option value="openai">OpenAI (ChatGPT)</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="google">Google Gemini</option>
+                  <option value="qwen">阿里通义千问 (Qwen)</option>
+                </select>
+                <span class="settings-select__chevron" aria-hidden="true">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-row settings-row--stack">
+            <span class="settings-icon settings-icon--gray" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="10" width="16" height="10" rx="2.5" />
+                <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                <path d="M12 14v2" />
+              </svg>
+            </span>
+            <span class="settings-row__text">
+              <span class="settings-row__label">API Key</span>
+              <span class="settings-row__desc">只保存在本机，不会上传</span>
+            </span>
+            <div class="settings-value settings-value--block">
+              <div class="relative w-full">
+                <input id="apiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..."
+                  class="key-input settings-input settings-input--key" />
+                <button id="toggleKeyBtn" type="button" class="settings-key-toggle">显示</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <span class="settings-icon settings-icon--green" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12h4l2-5 4 10 2-5h6" />
+              </svg>
+            </span>
+            <span class="settings-row__text">
+              <span class="settings-row__label">连接状态</span>
+              <span class="settings-row__desc">本地配置概览</span>
+            </span>
+            <div class="settings-value">
+              <span id="keyStatusDot" class="h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+              <span id="keyStatus" class="settings-status">尚未保存 API Key</span>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button id="saveKeyBtn" type="submit" class="apple-btn apple-btn--primary">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+                <path d="M17 21v-8H7v8M7 3v5h8" />
+              </svg>
+              保存
+            </button>
+
+            <button id="clearKeyBtn" type="button" disabled class="apple-btn apple-btn--danger">
+              删除已保存的 Key
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 使用提示 -->
+      <section class="apple-card animate-fade-up delay-2 mt-4 p-6 sm:p-7">
+        <h2 class="settings-card__title">
+          <span class="settings-icon settings-icon--gray" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8h.01M11 12h1v4h1" />
+            </svg>
+          </span>
+          使用提示
+        </h2>
+        <ul class="mt-3 space-y-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+          <li>· 提供商与 Key 会一起保存在当前浏览器，清除浏览器数据后会丢失，需要重新填写。</li>
+          <li>· 不要把 Key 分享给他人；公共电脑上使用后请点击「删除已保存的 Key」。</li>
+          <li>· 可前往 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" class="font-medium text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-300">DeepSeek 开放平台</a>、OpenAI、Anthropic、Google AI Studio 或阿里云百炼控制台创建 API Key。</li>
+          <li>· 浏览器直连第三方 API 可能受 CORS 限制；若失败，请改用支持跨域的代理地址或在本地服务中转发。</li>
+        </ul>
+      </section>
+
+      <!-- 传媒术语库 -->
+      <section class="apple-card settings-card animate-fade-up delay-2 mt-4">
+        <div class="settings-card__head">
+          <h2 class="settings-card__title">
+            <span class="settings-icon settings-icon--indigo" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6.5A2.5 2.5 0 0 1 4 18.5Z" />
+                <path d="M8 7h8M8 11h8M8 15h5" />
+              </svg>
+            </span>
+            传媒术语库
+          </h2>
+          <p class="settings-card__subtitle">这些术语会写进大模型的 System Prompt，翻译时强制使用指定译法。内置术语不可删除，自定义术语保存在 localStorage 的 custom_glossary。</p>
+        </div>
+
+        <div class="space-y-6 p-5 sm:p-6">
+          <div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">内置术语</h3>
+              <span id="builtinGlossaryCount" class="text-[11px] text-slate-400 dark:text-slate-500"></span>
+            </div>
+            <div id="builtinGlossaryList" class="glossary-chips mt-2.5"></div>
+          </div>
+
+          <div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">自定义术语</h3>
+              <span id="glossaryCount" class="text-[11px] text-slate-400 dark:text-slate-500">0 条</span>
+            </div>
+
+            <form id="glossaryForm" class="mt-2.5 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <input id="glossaryTermInput" type="text" maxlength="48" autocomplete="off" placeholder="英文术语，例如 B-roll"
+                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500" />
+              <input id="glossaryTranslationInput" type="text" maxlength="48" autocomplete="off" placeholder="中文译法，例如 空镜"
+                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500" />
+              <button type="submit" class="apple-btn apple-btn--primary whitespace-nowrap">添加术语</button>
+            </form>
+
+            <div id="glossaryList" class="mt-3 space-y-2"></div>
+            <p id="glossaryEmpty" class="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400 dark:border-slate-700 dark:text-slate-500">
+              还没有自定义术语，添加后会立即参与 AI 翻译。
+            </p>
+          </div>
+        </div>
+      </section>
+    </section><!-- /view-profile -->
+
+
+
+
+  </main>
+  <footer class="border-t border-slate-200 py-6 text-center text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
+    Rylan's note · 所有数据仅保存在本地浏览器
+  </footer>
+
+  <!-- 首次打开引导：昵称 / 头像 / 模型 / API Key -->
+  <div id="welcome-modal" class="welcome-overlay" hidden>
+    <div class="welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" aria-describedby="welcomeDesc">
+      <button id="welcomeCloseBtn" type="button" class="welcome-close" aria-label="关闭引导">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+
+      <div class="welcome-brand">
+        <span class="welcome-mark" aria-hidden="true">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="3" width="6" height="10" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+          </svg>
+        </span>
+        <span>Rylan's note</span>
+      </div>
+
+      <h2 id="welcomeTitle" class="welcome-title">先花 30 秒，把这里变成你的</h2>
+      <p id="welcomeDesc" class="welcome-desc">
+        设置一个昵称和头像，再填入模型 API Key，就能开始语音记录与 AI 翻译。所有内容只保存在这台设备的浏览器里。
+      </p>
+
+      <form id="welcomeForm" class="welcome-form" novalidate>
+        <div class="welcome-identity">
+          <button id="welcomeAvatarBtn" type="button" class="avatar-picker avatar-picker--md" aria-label="选择本地头像" title="选择本地头像">
+            <img data-avatar-img class="avatar-picker__img is-hidden" alt="" />
+            <span data-avatar-fallback class="avatar-picker__fallback">R</span>
+            <span class="avatar-picker__badge" aria-hidden="true">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 8h3l1.6-2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" />
+                <circle cx="12" cy="13" r="3.2" />
+              </svg>
+            </span>
+          </button>
+          <input id="welcomeAvatarInput" type="file" accept="image/*" class="sr-only" />
+
+          <div class="welcome-identity__field">
+            <label for="welcomeNameInput" class="welcome-label">昵称</label>
+            <input id="welcomeNameInput" type="text" maxlength="24" autocomplete="nickname" placeholder="例如 Rylan" class="welcome-input" />
+          </div>
+        </div>
+
+        <div>
+          <label for="welcomeProvider" class="welcome-label">模型提供商</label>
+          <div class="welcome-select-wrap">
+            <select id="welcomeProvider" class="welcome-input welcome-select">
+              <option value="deepseek" selected>DeepSeek</option>
+              <option value="openai">OpenAI (ChatGPT)</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="google">Google Gemini</option>
+              <option value="qwen">阿里通义千问 (Qwen)</option>
+            </select>
+            <span class="welcome-select__chevron" aria-hidden="true">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <label for="welcomeKeyInput" class="welcome-label">API Key</label>
+          <div class="welcome-key-wrap">
+            <input id="welcomeKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..." class="welcome-input welcome-input--key" />
+            <button id="welcomeEyeBtn" type="button" class="welcome-eye">显示</button>
+          </div>
+          <p id="welcomeKeyHint" class="welcome-hint">留空也可以先跳过，之后在「个人设置」里随时补填。</p>
+        </div>
+
+        <p id="welcomeError" class="welcome-error is-hidden" role="alert">
+          <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+          </svg>
+          <span id="welcomeErrorText">请检查填写的内容</span>
+        </p>
+
+        <div class="welcome-actions">
+          <button id="welcomeSkipBtn" type="button" class="welcome-skip">稍后再说</button>
+          <button id="welcomeSubmitBtn" type="submit" class="welcome-submit">
+            <span id="welcomeSubmitLabel">保存并开启</span>
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
+      </form>
+
+      <p class="welcome-footnote">数据保存在本机 localStorage · 不登录 · 不上传</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
